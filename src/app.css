@@ -1,0 +1,132 @@
+:root {
+  --bg: #111111;
+  --bg-surface: #1a1a1a;
+  --bg-input: #0d0d0d;
+  --border: #333333;
+  --border-focus: #cc0000;
+  --text: #cccccc;
+  --text-muted: #666666;
+  --text-dim: #444444;
+  --accent: #cc0000;
+  --success: #00cc00;
+  --error: #cc0000;
+  --link: #cc0000;
+  --font-mono: 'Courier New', 'Courier', monospace;
+  --font-body: 'Verdana', 'Geneva', sans-serif;
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-md: 13px;
+  --font-size-lg: 16px;
+  --font-size-xl: 20px;
+  --content-width: 780px;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+html {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: var(--font-size-md);
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  min-height: 100vh;
+}
+
+::selection {
+  background: var(--accent);
+  color: #fff;
+}
+
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) var(--bg);
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+button {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  background: var(--bg-surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--accent);
+  color: #fff;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+button.primary:hover {
+  background: #aa0000;
+}
+
+input, textarea {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 6px 8px;
+}
+
+input:focus, textarea:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.tag {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  border: 1px solid var(--border);
+  padding: 1px 6px;
+  color: var(--text-muted);
+  display: inline-block;
+}
+
+.tag.premium {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.feedback {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  margin-top: 8px;
+}
+
+.feedback.success {
+  color: var(--success);
+}
+
+.feedback.error {
+  color: var(--error);
+}
+
+.feedback.info {
+  color: var(--text-muted);
+}
