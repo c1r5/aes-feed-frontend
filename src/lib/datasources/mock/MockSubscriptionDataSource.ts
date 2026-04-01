@@ -45,7 +45,7 @@ export class MockSubscriptionDataSource implements ISubscriptionDataSource {
     localStorage.setItem(KEYS.serverSubscriptions, JSON.stringify(data));
   }
 
-  getStatus(): SubscriptionStatus {
+  async getStatus(): Promise<SubscriptionStatus> {
     const activeStr = localStorage.getItem(KEYS.active);
     const validUntil = localStorage.getItem(KEYS.validUntil);
 

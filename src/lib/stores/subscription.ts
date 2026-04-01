@@ -1,18 +1,16 @@
 import { writable, get } from 'svelte/store';
 import { goto } from '$app/navigation';
-import { MockSubscriptionDataSource } from '$lib/datasources/mock/MockSubscriptionDataSource';
+import { subscriptionDataSource as datasource } from '$lib/datasources/provider';
 import type { SubscriptionStatus, SubscriptionValidation } from '$lib/datasources/interfaces/ISubscriptionDataSource';
 import { deriveMasterKey, derivePostKey, encryptContent } from '$lib/crypto/crypto';
 import { saveMasterKey, saveUserSalt, clearCryptoData, cachePostKey } from '$lib/crypto/store';
 import { generateRandom, arrayBufferToBase64 } from '$lib/crypto/utils';
 import { posts, PREMIUM_CONTENT_SERVER } from '$lib/datasources/mock/MockPostDataSource';
 
-const datasource = new MockSubscriptionDataSource();
-
 export const subscriptionStatus = writable<SubscriptionStatus>({ active: false, validUntil: null });
 
-export function initSubscription(): void {
-  const status = datasource.getStatus();
+export async function initSubscription(): Promise<void> {
+  const status = await datasource.getStatus();
   subscriptionStatus.set(status);
 }
 
@@ -48,7 +46,7 @@ export async function activateSubscription(): Promise<void> {
   await saveUserSalt(userSalt);
   await encryptPremiumPosts(masterKey);
   datasource.markSecretDelivered();
-  subscriptionStatus.set(datasource.getStatus());
+  subscriptionStatus.set(await datasource.getStatus());
 }
 
 export async function deactivateSubscription(): Promise<void> {
@@ -75,12 +73,12 @@ export function restoreLocalSubscription(validUntil: string): void {
   subscriptionStatus.set({ active: true, validUntil });
 }
 
-export function getSubscriptionDatasource(): MockSubscriptionDataSource {
+export function getSubscriptionDatasource(): typeof datasource {
   return datasource;
 }
 
 export async function checkAndEnforce(): Promise<boolean> {
-  const status = datasource.getStatus();
+  const status = await datasource.getStatus();
   subscriptionStatus.set(status);
 
   if (!status.active) {

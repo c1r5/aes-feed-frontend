@@ -32,8 +32,8 @@
     log("Expiração simulada no localStorage.", '*');
   }
 
-  function checkStatus() {
-    const status = subSource.getStatus();
+  async function checkStatus() {
+    const status = await subSource.getStatus();
     log(`Status: active=${status.active}, validUntil=${status.validUntil}`, '*');
   }
 

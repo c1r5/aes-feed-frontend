@@ -1,6 +1,7 @@
 export interface SubscriptionStatus {
   active: boolean;
   validUntil: string | null;
+  paymentSecret?: string; // base64 — presente apenas na primeira chamada após pagamento (API mode)
 }
 
 export interface SubscriptionValidation {
@@ -10,7 +11,7 @@ export interface SubscriptionValidation {
 }
 
 export interface ISubscriptionDataSource {
-  getStatus(): SubscriptionStatus;
+  getStatus(): Promise<SubscriptionStatus>;
   simulatePayment(): { paymentSecret: Uint8Array; userSalt: Uint8Array };
   simulateExpiration(): void;
   isSecretDelivered(): boolean;
@@ -18,5 +19,6 @@ export interface ISubscriptionDataSource {
   getUserSalt(): Uint8Array | null;
   clear(): void;
   clearSubscriptionData(): void;
+  restoreLocalSubscription(validUntil: string): void;
   validateSubscription(userId: string): Promise<SubscriptionValidation>;
 }

@@ -3,7 +3,8 @@
   import { loadMasterKey, loadUserSalt, listCachedPostIds, clearCryptoData } from '$lib/crypto/store';
   import { exportCryptoBackup, importCryptoBackup, triggerDownload, readBackupFile } from '$lib/crypto/backup';
   import { session, doLogout } from '$lib/stores/auth';
-  import { subscriptionStatus, activateSubscription, deactivateSubscription, initSubscription, getSubscriptionDatasource } from '$lib/stores/subscription';
+  import { subscriptionStatus, activateSubscription, deactivateSubscription, initSubscription } from '$lib/stores/subscription';
+  import { mockSubscriptionDatasource } from '$lib/datasources/provider';
 
   let visible = false;
   let results: string[] = [];
@@ -30,13 +31,12 @@
 
   function refreshServerMock(): void {
     const s = $session;
-    if (!s) {
+    if (!s || !mockSubscriptionDatasource) {
       serverSubStatus = 'n/a';
       serverSubValid = false;
       return;
     }
-    const ds = getSubscriptionDatasource();
-    const entry = ds.getServerSubscriptionStatus(s.user.id);
+    const entry = mockSubscriptionDatasource.getServerSubscriptionStatus(s.user.id);
     if (!entry) {
       serverSubStatus = 'não encontrada';
       serverSubValid = false;
@@ -51,18 +51,16 @@
 
   function handleInvalidateServer(): void {
     const s = $session;
-    if (!s) return;
-    const ds = getSubscriptionDatasource();
-    ds.invalidateServerSubscription(s.user.id);
+    if (!s || !mockSubscriptionDatasource) return;
+    mockSubscriptionDatasource.invalidateServerSubscription(s.user.id);
     log('[+]', 'Sub invalidada no servidor mock');
     refreshServerMock();
   }
 
   function handleRestoreServer(): void {
     const s = $session;
-    if (!s) return;
-    const ds = getSubscriptionDatasource();
-    ds.restoreServerSubscription(s.user.id);
+    if (!s || !mockSubscriptionDatasource) return;
+    mockSubscriptionDatasource.restoreServerSubscription(s.user.id);
     log('[+]', 'Sub restaurada no servidor mock (+30d)');
     refreshServerMock();
   }

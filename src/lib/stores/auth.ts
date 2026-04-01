@@ -1,9 +1,7 @@
 import { writable, derived } from 'svelte/store';
 import type { Session, User } from '$lib/datasources/interfaces/IAuthDataSource';
-import { MockAuthDataSource } from '$lib/datasources/mock/MockAuthDataSource';
+import { authDataSource as datasource } from '$lib/datasources/provider';
 import { subscriptionStatus, clearAllSubscriptionData } from './subscription';
-
-const datasource = new MockAuthDataSource();
 
 export const session = writable<Session | null>(null);
 
