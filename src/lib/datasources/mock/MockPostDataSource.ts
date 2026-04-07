@@ -109,11 +109,6 @@ const SEED_POSTS: MockPost[] = [
   }
 ];
 
-export const PREMIUM_CONTENT_SERVER: Record<string, string> = {
-  'seed-002': 'Provas de zero-knowledge parecem magia, mas a intuição é simples: provar que você sabe algo sem revelar o quê.\n\nExemplo clássico: a caverna de Ali Babá. Eu entro por uma porta, saio pela outra que você escolheu. Repito 20 vezes. Se eu acertei todas, a probabilidade de eu não saber a senha é 1/2^20 — praticamente zero.\n\nNa prática, ZKPs são usados em:\n- Zcash (zk-SNARKs para transações privadas)\n- Login sem senha (provando identidade sem enviar credenciais)\n- Votação eletrônica (provando que votou sem revelar em quem)\n\nO trade-off: provas ZK são computacionalmente caras. Mas os avanços em zk-STARKs estão mudando isso.',
-  'seed-004': 'OPSEC não é paranoia — é disciplina. Aqui vai o básico:\n\n1. Compartimentalize identidades. Email pessoal ≠ email de projeto ≠ throwaway.\n2. VPN sempre. Mas não confie em VPNs comerciais — rode a sua.\n3. Metadados matam. Uma foto com EXIF pode revelar sua localização exata.\n4. Threat model primeiro. Contra quem você está se protegendo? Governo? Empresa? Ex?\n5. O elo mais fraco é humano. Phishing funciona em 99% dos casos.\n\nA maioria das pessoas não precisa de OPSEC militar. Mas todo mundo deveria seguir o básico.',
-};
-
 function loadPosts(): MockPost[] {
   if (typeof window === 'undefined') return SEED_POSTS;
   const stored = sessionStorage.getItem('aesf33d:mockPosts');

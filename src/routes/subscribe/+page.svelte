@@ -1,289 +1,195 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
-  import { get } from 'svelte/store';
-  import { session } from '$lib/stores/auth';
-  import { subscriptionStatus, activateSubscription, deactivateSubscription, initSubscription, validateServerSubscription, restoreLocalSubscription } from '$lib/stores/subscription';
-  import { loadMasterKey, loadUserSalt, listCachedPostIds } from '$lib/crypto/store';
-  import { exportCryptoBackup, importCryptoBackup, triggerDownload, readBackupFile } from '$lib/crypto/backup';
+	import { goto } from '$app/navigation'
+	import { subscriptionDataSource } from '$lib/datasources'
+	import { generateMasterKey } from '$lib/crypto'
+	import { saveKey, loadKey } from '$lib/storage'
+	import { mockSubscriptionValid } from '$lib/subscription'
+	import type { SubscriptionStatus } from '$lib/datasources/subscription/ISubscriptionDataSource'
 
-  const PENDING_EXPORT_KEY = 'aesf33d:pendingExport';
+	let status = $state<SubscriptionStatus | null>(null)
+	let hasMasterKey = $state(false)
+	let loading = $state(false)
+	let error = $state<string | null>(null)
+	let address = $state<string | null>(null)
+	let amount = $state<number | null>(null)
 
-  let hasMasterKey = false;
-  let hasUserSalt = false;
-  let cachedPostCount = 0;
-  let feedback = '';
-  let feedbackType: 'success' | 'error' | 'info' = 'info';
-  let fileInput: HTMLInputElement;
-  let loading = false;
-  let showExportNudge = false;
+	async function refreshStatus() {
+		status = await subscriptionDataSource.getStatus()
+		hasMasterKey = (await loadKey('masterKey')) !== null
+	}
 
-  async function refreshCryptoState(): Promise<void> {
-    const mk = await loadMasterKey();
-    hasMasterKey = mk !== null;
-    const us = await loadUserSalt();
-    hasUserSalt = us !== null;
-    const ids = await listCachedPostIds();
-    cachedPostCount = ids.length;
-  }
+	async function loadPaymentInfo() {
+		const payment = await subscriptionDataSource.getPaymentAddress()
+		address = payment.address
+		amount = payment.amount
+	}
 
-  async function handleSubscribe(): Promise<void> {
-    loading = true;
-    try {
-      await activateSubscription();
-      feedback = '[+] Assinatura ativada com sucesso';
-      feedbackType = 'success';
-      showExportNudge = true;
-      sessionStorage.setItem(PENDING_EXPORT_KEY, 'true');
-      await refreshCryptoState();
-    } catch (e) {
-      feedback = `[-] ${e instanceof Error ? e.message : String(e)}`;
-      feedbackType = 'error';
-    }
-    loading = false;
-  }
+	async function handleMockActivation() {
+		loading = true
+		error = null
+		try {
+			const masterKey = await generateMasterKey()
+			await saveKey('masterKey', masterKey)
+			mockSubscriptionValid()
+			await refreshStatus()
+			goto('/')
+		} catch {
+			error = 'falha ao ativar assinatura'
+		} finally {
+			loading = false
+		}
+	}
 
-  async function handleCancel(): Promise<void> {
-    await deactivateSubscription();
-    feedback = '[+] Assinatura cancelada';
-    feedbackType = 'success';
-  }
-
-  async function handleExport(): Promise<void> {
-    try {
-      const s = get(session);
-      const backup = await exportCryptoBackup(s?.user.id ?? 'user');
-      triggerDownload(backup);
-      const date = new Date().toISOString().split('T')[0];
-      feedback = `[+] Backup exportado: aesf33d-backup-${date}.aesf33d`;
-      feedbackType = 'success';
-      showExportNudge = false;
-      sessionStorage.removeItem(PENDING_EXPORT_KEY);
-    } catch (e) {
-      feedback = `[-] ${e instanceof Error ? e.message : String(e)}`;
-      feedbackType = 'error';
-    }
-  }
-
-  function handleImportClick(): void {
-    fileInput.click();
-  }
-
-  async function onFileSelected(e: Event): Promise<void> {
-    const target = e.target as HTMLInputElement;
-    const file = target.files?.[0];
-    if (!file) return;
-    try {
-      const backup = await readBackupFile(file);
-
-      const validation = await validateServerSubscription(backup.userId);
-      if (!validation.valid) {
-        feedback = '[-] Assinatura expirada. Renove antes de importar.';
-        feedbackType = 'error';
-        target.value = '';
-        return;
-      }
-
-      await importCryptoBackup(backup);
-
-      restoreLocalSubscription(validation.validUntil!);
-      feedback = '[+] Backup importado. Acesso restaurado.';
-      feedbackType = 'success';
-      await refreshCryptoState();
-    } catch (err) {
-      feedback = `[-] ${err instanceof Error ? err.message : String(err)}`;
-      feedbackType = 'error';
-    }
-    target.value = '';
-  }
-
-  onMount(() => {
-    if (!get(session)) {
-      goto('/login');
-      return;
-    }
-    initSubscription();
-    refreshCryptoState();
-
-    if (sessionStorage.getItem(PENDING_EXPORT_KEY) === 'true') {
-      showExportNudge = true;
-    }
-  });
+	$effect(() => {
+		refreshStatus()
+		loadPaymentInfo()
+	})
 </script>
 
-<div class="subscribe-page">
-  <h1 class="page-title">assinatura</h1>
+<div class="shell">
+	<h1>[ SUBSCRIBE ]</h1>
 
-  <div class="section">
-    <div class="status-line">
-      status:
-      {#if $subscriptionStatus.active}
-        <span class="status-active">&#x1F7E2; ativa até {new Date($subscriptionStatus.validUntil ?? '').toLocaleDateString('pt-BR')}</span>
-      {:else}
-        <span class="status-inactive">&#x1F534; inativa</span>
-      {/if}
-    </div>
-    <div class="section-actions">
-      {#if $subscriptionStatus.active}
-        <button on:click={handleCancel}>[cancelar assinatura]</button>
-      {:else}
-        <button class="primary" on:click={handleSubscribe} disabled={loading}>
-          {loading ? '[...] processando' : '[assinar]'}
-        </button>
-      {/if}
-    </div>
-  </div>
+	{#if status?.valid}
+		<p class="success">[+] assinatura ativa até {status.validUntil?.toLocaleDateString('pt-BR')}</p>
+		{#if hasMasterKey}
+			<p class="hint">MasterKey presente — posts premium serão decifrados automaticamente</p>
+		{:else}
+			<p class="warn">[-] MasterKey ausente — re-ative sua assinatura para derivar uma nova chave</p>
+		{/if}
+		<a href="/" class="action-btn">&larr; voltar ao feed</a>
+	{:else}
+		<p class="desc">pague com XMR para acessar conteúdo premium cifrado</p>
 
-  <div class="separator"></div>
+		{#if address}
+			<div class="payment-info">
+				<span class="label">endereço XMR</span>
+				<pre class="address">{address}</pre>
+				<span class="label">valor</span>
+				<pre class="amount">{amount} XMR</pre>
+			</div>
+		{/if}
 
-  <div class="section">
-    <h2 class="section-title">backup de chaves</h2>
+		<p class="hint">após confirmação do pagamento, o servidor enviará o PaymentSecret que ativa sua assinatura</p>
 
-    <div class="key-status">
-      <div>MasterKey: {hasMasterKey ? '✓ presente' : '✗ ausente'}</div>
-      <div>userSalt: {hasUserSalt ? '✓ presente' : '✗ ausente'}</div>
-      <div>PostKeys: {cachedPostCount} cacheadas</div>
-    </div>
+		{#if error}
+			<p class="error">[-] {error}</p>
+		{/if}
 
-    <div class="actions">
-      <button on:click={handleImportClick}>&#8593; importar .aesf33d</button>
-    </div>
-    <input
-      bind:this={fileInput}
-      type="file"
-      accept=".aesf33d"
-      on:change={onFileSelected}
-      class="hidden"
-    />
-  </div>
-
-  {#if feedback}
-    <div class="feedback" class:success={feedbackType === 'success'} class:error={feedbackType === 'error'} class:info={feedbackType === 'info'}>
-      {feedback}
-    </div>
-  {/if}
-
-  {#if showExportNudge}
-    <div class="export-nudge">
-      <div class="nudge-title">&#9888; IMPORTANTE: exporte suas chaves AGORA.</div>
-      <div class="nudge-body">
-        Ao sair da conta, seus dados criptográficos serão
-        apagados. Sem o backup, você perde acesso ao
-        conteúdo premium permanentemente.
-      </div>
-      <button class="nudge-export" on:click={handleExport}>&#8595; exportar .aesf33d</button>
-    </div>
-  {/if}
-
-  <div class="separator"></div>
-
-  <div class="warning">
-    &#9888; exporte suas chaves antes de limpar o cache.
-    sem o backup, o acesso a conteúdo premium é perdido permanentemente.
-  </div>
+		{#if import.meta.env.DEV}
+			<div class="mock-section">
+				<span class="label">mock (dev only)</span>
+				<button onclick={handleMockActivation} disabled={loading} class="action-btn">
+					{#if loading}<span class="blink">ativando...</span>{:else}[ Simular pagamento + ativação ]{/if}
+				</button>
+			</div>
+		{/if}
+	{/if}
 </div>
 
 <style>
-  .page-title {
-    font-family: var(--font-mono);
-    font-size: var(--font-size-xl);
-    color: var(--text);
-    font-weight: normal;
-    margin-bottom: 16px;
-  }
-
-  .section {
-    margin-bottom: 12px;
-  }
-
-  .section-title {
-    font-family: var(--font-mono);
-    font-size: var(--font-size-sm);
-    color: var(--text-muted);
-    font-weight: normal;
-    margin-bottom: 8px;
-  }
-
-  .section-actions {
-    margin-top: 8px;
-  }
-
-  .separator {
-    border-top: 1px solid var(--border);
-    margin: 16px 0;
-  }
-
-  .status-line {
-    font-family: var(--font-mono);
-    font-size: var(--font-size-sm);
-    color: var(--text);
-  }
-
-  .status-active {
-    color: var(--success);
-  }
-
-  .status-inactive {
-    color: var(--error);
-  }
-
-  .key-status {
-    font-family: var(--font-mono);
-    font-size: var(--font-size-sm);
-    color: var(--text);
-    line-height: 1.6;
-    margin-bottom: 12px;
-  }
-
-  .actions {
-    display: flex;
-    gap: 8px;
-  }
-
-  .hidden {
-    display: none;
-  }
-
-  .feedback {
-    font-family: var(--font-mono);
-    font-size: var(--font-size-sm);
-    margin-top: 8px;
-  }
-
-  .success { color: var(--success); }
-  .error { color: var(--error); }
-  .info { color: var(--text-muted); }
-
-  .warning {
-    font-family: var(--font-mono);
-    font-size: var(--font-size-sm);
-    color: var(--accent);
-    line-height: 1.5;
-  }
-
-  .export-nudge {
-    border: 2px solid var(--accent);
-    background: var(--bg-surface);
-    padding: 12px;
-    margin-top: 12px;
-    font-family: var(--font-mono);
-    font-size: var(--font-size-sm);
-    color: var(--text);
-  }
-
-  .nudge-title {
-    color: var(--accent);
-    font-weight: bold;
-    margin-bottom: 8px;
-  }
-
-  .nudge-body {
-    line-height: 1.5;
-    margin-bottom: 12px;
-  }
-
-  .nudge-export {
-    color: var(--accent);
-    border-color: var(--accent);
-  }
+	.shell {
+		max-width: 600px;
+		margin: 60px auto;
+		padding: 24px 16px;
+	}
+	h1 {
+		font-family: var(--mono);
+		font-size: 16px;
+		color: var(--accent);
+		margin-bottom: 16px;
+	}
+	.desc {
+		font-family: var(--mono);
+		font-size: 13px;
+		color: var(--text);
+		margin-bottom: 16px;
+	}
+	.hint {
+		font-family: var(--mono);
+		font-size: 11px;
+		color: var(--text-muted);
+		margin-bottom: 12px;
+	}
+	.warn {
+		font-family: var(--mono);
+		font-size: 12px;
+		color: var(--accent);
+		margin-bottom: 12px;
+	}
+	.label {
+		font-family: var(--mono);
+		font-size: 11px;
+		color: var(--text-muted);
+		text-transform: uppercase;
+		display: block;
+		margin-bottom: 4px;
+	}
+	.payment-info {
+		margin-bottom: 16px;
+	}
+	.address {
+		background: var(--bg-surface);
+		border: 1px solid var(--border);
+		padding: 8px;
+		font-family: var(--mono);
+		font-size: 11px;
+		color: var(--link);
+		word-break: break-all;
+		margin-bottom: 8px;
+	}
+	.amount {
+		background: var(--bg-surface);
+		border: 1px solid var(--border);
+		padding: 8px;
+		font-family: var(--mono);
+		font-size: 13px;
+		color: var(--text);
+		margin-bottom: 8px;
+	}
+	.mock-section {
+		margin-top: 20px;
+		padding-top: 12px;
+		border-top: 1px solid var(--border);
+	}
+	.action-btn {
+		display: inline-block;
+		font-family: var(--mono);
+		font-size: 13px;
+		border: 1px solid var(--accent);
+		color: var(--accent);
+		padding: 8px 16px;
+		text-decoration: none;
+		background: none;
+		cursor: pointer;
+		margin-top: 8px;
+	}
+	.action-btn:hover:not(:disabled) {
+		background: var(--accent);
+		color: #fff;
+		text-decoration: none;
+	}
+	.action-btn:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+	.success {
+		font-family: var(--mono);
+		font-size: 14px;
+		color: var(--success);
+		margin-bottom: 8px;
+	}
+	.error {
+		font-family: var(--mono);
+		font-size: 13px;
+		color: var(--accent);
+		margin-bottom: 8px;
+	}
+	.blink {
+		animation: blink 1s step-end infinite;
+	}
+	@keyframes blink {
+		50% {
+			opacity: 0;
+		}
+	}
 </style>

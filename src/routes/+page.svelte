@@ -1,16 +1,33 @@
 <script lang="ts">
-  import { posts } from '$lib/datasources/mock/MockPostDataSource';
-  import FeedRow from '$lib/components/FeedRow.svelte';
+	import { page } from '$app/state'
+	import { posts } from '$lib/mock.svelte'
+	import SideNav from '$lib/components/layout/SideNav.svelte'
+	import FeedTable from '$lib/components/post/FeedTable.svelte'
+
+	const filter = $derived(page.url.searchParams.get('filter') ?? 'all')
+	const filtered = $derived(
+		filter === 'all'
+			? posts
+			: filter === 'encrypted'
+				? posts.filter((p) => p.is_premium)
+				: posts.filter((p) => !p.is_premium)
+	)
 </script>
 
-<div class="feed">
-  {#each $posts as post (post.id)}
-    <FeedRow {post} />
-  {/each}
+<div class="layout">
+	<SideNav active={filter} />
+	<main>
+		<FeedTable posts={filtered} />
+	</main>
 </div>
 
 <style>
-  .feed {
-    width: 100%;
-  }
+	.layout {
+		display: flex;
+		min-height: 100vh;
+	}
+	main {
+		flex: 1;
+		padding: 16px;
+	}
 </style>

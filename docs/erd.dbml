@@ -1,0 +1,156 @@
+// AES F33D — Entity Relationship Diagram
+// Visualize em https://dbdiagram.io
+
+Project aes_feed {
+  database_type: 'IndexedDB + localStorage'
+  Note: '''
+    Feed anonimo de posts criptografados com AES-GCM.
+    Autores publicam conteudo cifrado. Leitores pagam em XMR
+    e recebem acesso via MasterKey + HKDF derivation.
+  '''
+}
+
+// ──────────────────────────────────────
+// IndexedDB: aes-feed-data
+// ──────────────────────────────────────
+
+Table posts {
+  id varchar [pk, note: 'crypto.randomUUID()']
+  slug varchar [unique, not null, note: 'URL-friendly, gerado do titulo + sufixo random']
+  authorID varchar [not null, note: 'UUID do autor (da Session)']
+  title varchar [not null]
+  isPremium boolean [not null, default: false]
+  body text [null, note: 'plaintext markdown — apenas posts FREE']
+  encryptedBlob text [null, note: 'base64(IV[12] + ciphertext) — apenas posts PREMIUM']
+  postSalt varchar [null, note: 'base64(16 bytes random) — salt para HKDF derivation']
+  iv varchar [null, note: 'reservado para uso futuro']
+  upvotesCount integer [not null, default: 0]
+  createdAt datetime [not null, note: 'armazenado como ISO string no IDB']
+
+  Note: '''
+    Store: "posts" no IndexedDB "aes-feed-data"
+    keyPath: "id"
+    Posts FREE tem body preenchido e encryptedBlob/postSalt null.
+    Posts PREMIUM tem body null e encryptedBlob/postSalt preenchidos.
+  '''
+}
+
+Table comments {
+  id varchar [pk, note: 'crypto.randomUUID()']
+  postID varchar [not null, ref: > posts.id]
+  authorID varchar [not null]
+  authorUsername varchar [not null]
+  body text [not null]
+  createdAt datetime [not null, note: 'armazenado como ISO string no IDB']
+
+  Note: '''
+    Store: "comments" no IndexedDB "aes-feed-data"
+    keyPath: "id"
+    Sem indice secundario — filtrado por postID em memoria.
+  '''
+}
+
+// ──────────────────────────────────────
+// IndexedDB: aes-feed-keys
+// ──────────────────────────────────────
+
+Table crypto_keys {
+  name varchar [pk, note: 'ex: "masterKey"']
+  raw_key blob [not null, note: 'ArrayBuffer exportado do CryptoKey via exportKey("raw")']
+
+  Note: '''
+    Store: "keys" no IndexedDB "aes-feed-keys"
+    keyPath: "name"
+    Armazena CryptoKeys exportaveis.
+    MasterKey: AES-GCM 256-bit, extractable.
+    Nunca sai do browser.
+  '''
+}
+
+// ──────────────────────────────────────
+// localStorage
+// ──────────────────────────────────────
+
+Table session {
+  _key varchar [pk, note: '"aes-feed-session"']
+  userID varchar [not null, note: 'crypto.randomUUID()']
+  username varchar [not null, note: 'handle do usuario']
+  token varchar [not null, note: 'btoa(userID:expiresAt)']
+  expiresAt datetime [not null, note: 'now + 24h']
+
+  Note: '''
+    localStorage key: "aes-feed-session"
+    JSON serializado. TTL de 24h, verificado em getSession().
+  '''
+}
+
+Table subscription {
+  _key varchar [pk, note: '"aes-feed-subscription"']
+  subscriptionValid boolean [not null]
+  validUntil datetime [null, note: 'ISO string, now + 30d quando ativada']
+
+  Note: '''
+    localStorage key: "aes-feed-subscription"
+    Mockado via DevModal. Em producao viria do servidor
+    apos pagamento XMR confirmado.
+  '''
+}
+
+Table upvotes {
+  _key varchar [pk, note: '"aes-feed-upvotes"']
+  postIDs varchar[] [note: 'Set<string> serializado como JSON array']
+
+  Note: '''
+    localStorage key: "aes-feed-upvotes"
+    Rastreia quais posts o usuario atual ja votou.
+  '''
+}
+
+Table seed_flag {
+  _key varchar [pk, note: '"aes-feed-posts-seeded"']
+  value varchar [note: '"1" se seed ja executado']
+
+  Note: '''
+    localStorage key: "aes-feed-posts-seeded"
+    Flag de idempotencia para ensurePostsSeeded().
+  '''
+}
+
+// ──────────────────────────────────────
+// Entidades de API (stubs, nao implementadas)
+// ──────────────────────────────────────
+
+Table payouts {
+  id varchar [pk]
+  authorID varchar [not null, ref: > posts.authorID]
+  xmrTxID varchar [not null, note: 'hash da transacao Monero']
+  xmrAmount decimal [not null, note: 'valor total em XMR']
+  platformAmount decimal [not null, note: 'taxa da plataforma (10%)']
+  authorAmount decimal [not null, note: 'repasse ao autor (90%)']
+  signedLog text [not null, note: 'Ed25519 JWT para auditoria']
+  createdAt datetime [not null]
+
+  Note: '''
+    Apenas mockado com dados estaticos.
+    Em producao: registro de pagamentos XMR
+    com log assinado para transparencia.
+  '''
+}
+
+Table payment_address {
+  address varchar [pk, note: 'endereco Monero']
+  amount decimal [not null, note: 'valor em XMR (mock: 0.05)']
+  currency varchar [not null, note: '"XMR"']
+
+  Note: '''
+    Retornado por subscriptionDataSource.getPaymentAddress().
+    Em producao: endereco gerado por post pelo servidor.
+  '''
+}
+
+// ──────────────────────────────────────
+// Relationships
+// ──────────────────────────────────────
+
+Ref: comments.postID > posts.id [delete: cascade]
+Ref: payouts.authorID > posts.authorID

@@ -1,106 +1,98 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
-  import { session, doLogin } from '$lib/stores/auth';
-  import { AuthError } from '$lib/datasources/errors';
+	import { goto } from '$app/navigation'
+	import { getUser, login } from '$lib/session.svelte'
 
-  let email = '';
-  let password = '';
-  let feedback = '';
+	let handle = $state('')
 
-  onMount(() => {
-    if ($session) goto('/');
-  });
+	function generateHandle(): string {
+		const bytes = crypto.getRandomValues(new Uint8Array(3))
+		return Array.from(bytes)
+			.map((b) => b.toString(16).padStart(2, '0'))
+			.join('')
+	}
 
-  async function handleLogin(): Promise<void> {
-    feedback = '';
-    if (!email.trim() || !password) {
-      feedback = '[-] preencha todos os campos';
-      return;
-    }
-    try {
-      await doLogin(email, password);
-      goto('/');
-    } catch (e) {
-      if (e instanceof AuthError) {
-        feedback = `[-] ${e.message}`;
-      } else {
-        feedback = `[-] erro inesperado`;
-      }
-    }
-  }
+	function handleSubmit(e: Event) {
+		e.preventDefault()
+		const author = handle.trim() || generateHandle()
+		login(author)
+		goto('/')
+	}
+
+	if (getUser()) goto('/')
 </script>
 
-<div class="auth-page">
-  <h1 class="page-title">login</h1>
-
-  <div class="field">
-    <label for="email">email:</label>
-    <input id="email" type="email" bind:value={email} />
-  </div>
-
-  <div class="field">
-    <label for="password">password:</label>
-    <input
-      id="password"
-      type="password"
-      bind:value={password}
-      on:keydown={(e) => e.key === 'Enter' && handleLogin()}
-    />
-  </div>
-
-  <button class="primary" on:click={handleLogin}>entrar</button>
-
-  {#if feedback}
-    <div class="feedback error">{feedback}</div>
-  {/if}
-
-  <p class="alt-link">não tem conta? <a href="/register">registre-se</a></p>
+<div class="shell">
+	<h1>[ LOGIN ]</h1>
+	<p class="desc">enter a handle or leave blank for random identity</p>
+	<form onsubmit={handleSubmit}>
+		<label for="handle">handle</label>
+		<input
+			id="handle"
+			type="text"
+			bind:value={handle}
+			placeholder="e.g. a3f7c1"
+			autocomplete="off"
+			spellcheck="false"
+			maxlength="12"
+		/>
+		<button type="submit">[ LOGIN ]</button>
+	</form>
 </div>
 
 <style>
-  .auth-page {
-    max-width: 400px;
-  }
-
-  .page-title {
-    font-family: var(--font-mono);
-    font-size: var(--font-size-xl);
-    color: var(--text);
-    font-weight: normal;
-    margin-bottom: 16px;
-  }
-
-  .field {
-    margin-bottom: 12px;
-  }
-
-  .field label {
-    display: block;
-    font-family: var(--font-mono);
-    font-size: var(--font-size-sm);
-    color: var(--text-muted);
-    margin-bottom: 4px;
-  }
-
-  .field input {
-    width: 100%;
-  }
-
-  .feedback {
-    font-family: var(--font-mono);
-    font-size: var(--font-size-sm);
-    margin-top: 8px;
-  }
-
-  .error {
-    color: var(--error);
-  }
-
-  .alt-link {
-    font-family: var(--font-mono);
-    font-size: var(--font-size-sm);
-    color: var(--text-muted);
-    margin-top: 16px;
-  }
+	.shell {
+		max-width: 400px;
+		margin: 80px auto;
+		padding: 24px 16px;
+	}
+	h1 {
+		font-family: var(--mono);
+		font-size: 16px;
+		color: var(--accent);
+		margin-bottom: 8px;
+	}
+	.desc {
+		font-family: var(--mono);
+		font-size: 12px;
+		color: var(--text-muted);
+		margin-bottom: 24px;
+	}
+	form {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+	label {
+		font-family: var(--mono);
+		font-size: 12px;
+		color: var(--text-muted);
+		text-transform: uppercase;
+	}
+	input {
+		background: var(--bg);
+		border: 1px solid var(--border);
+		color: var(--text);
+		font-family: var(--mono);
+		font-size: 13px;
+		padding: 8px;
+		outline: none;
+	}
+	input:focus {
+		border-color: var(--link);
+	}
+	button {
+		background: none;
+		border: 1px solid var(--accent);
+		color: var(--accent);
+		font-family: var(--mono);
+		font-size: 13px;
+		padding: 8px 16px;
+		cursor: pointer;
+		text-transform: uppercase;
+		align-self: flex-start;
+	}
+	button:hover {
+		background: var(--accent);
+		color: #fff;
+	}
 </style>

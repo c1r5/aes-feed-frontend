@@ -1,7 +1,9 @@
 import { writable, derived } from 'svelte/store';
 import type { Session, User } from '$lib/datasources/interfaces/IAuthDataSource';
-import { authDataSource as datasource } from '$lib/datasources/provider';
-import { subscriptionStatus, clearAllSubscriptionData } from './subscription';
+import { MockAuthDataSource } from '$lib/datasources/mock/MockAuthDataSource';
+import { resetSubscription } from './subscription';
+
+const datasource = new MockAuthDataSource();
 
 export const session = writable<Session | null>(null);
 
@@ -26,7 +28,6 @@ export async function doRegister(username: string, email: string, password: stri
 
 export async function doLogout(): Promise<void> {
   await datasource.logout();
-  await clearAllSubscriptionData();
+  resetSubscription();
   session.set(null);
-  subscriptionStatus.set({ active: false, validUntil: null });
 }

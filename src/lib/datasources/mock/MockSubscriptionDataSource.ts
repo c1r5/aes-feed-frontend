@@ -1,5 +1,5 @@
 import { generateRandom, arrayBufferToBase64, base64ToArrayBuffer } from '$lib/crypto/utils';
-import type { ISubscriptionDataSource, SubscriptionStatus, SubscriptionValidation } from '$lib/datasources/interfaces/ISubscriptionDataSource';
+import type { ISubscriptionDataSource, SubscriptionStatus } from '$lib/datasources/interfaces/ISubscriptionDataSource';
 import type { Session } from '$lib/datasources/interfaces/IAuthDataSource';
 
 const KEYS = {
@@ -8,13 +8,7 @@ const KEYS = {
   secretDelivered: 'aesf33d:sub:secretDelivered',
   userSalt: 'aesf33d:userSalt',
   session: 'aesf33d:session',
-  serverSubscriptions: 'aesf33d:server:subscriptions',
 };
-
-interface ServerSubscriptionEntry {
-  validUntil: string;
-  active: boolean;
-}
 
 function getSessionUserSalt(): Uint8Array | null {
   const raw = localStorage.getItem(KEYS.session);
@@ -31,21 +25,7 @@ function getSessionUserSalt(): Uint8Array | null {
 }
 
 export class MockSubscriptionDataSource implements ISubscriptionDataSource {
-  private getServerSubscriptions(): Record<string, ServerSubscriptionEntry> {
-    const raw = localStorage.getItem(KEYS.serverSubscriptions);
-    if (!raw) return {};
-    try {
-      return JSON.parse(raw) as Record<string, ServerSubscriptionEntry>;
-    } catch {
-      return {};
-    }
-  }
-
-  private setServerSubscriptions(data: Record<string, ServerSubscriptionEntry>): void {
-    localStorage.setItem(KEYS.serverSubscriptions, JSON.stringify(data));
-  }
-
-  async getStatus(): Promise<SubscriptionStatus> {
+  getStatus(): SubscriptionStatus {
     const activeStr = localStorage.getItem(KEYS.active);
     const validUntil = localStorage.getItem(KEYS.validUntil);
 
@@ -94,13 +74,6 @@ export class MockSubscriptionDataSource implements ISubscriptionDataSource {
     localStorage.setItem(KEYS.validUntil, validUntil.toISOString());
     localStorage.setItem(KEYS.secretDelivered, 'false');
 
-    const userId = this.getCurrentUserId();
-    if (userId) {
-      const subs = this.getServerSubscriptions();
-      subs[userId] = { validUntil: validUntil.toISOString(), active: true };
-      this.setServerSubscriptions(subs);
-    }
-
     return { paymentSecret, userSalt: userSaltRaw };
   }
 
@@ -108,15 +81,6 @@ export class MockSubscriptionDataSource implements ISubscriptionDataSource {
     localStorage.setItem(KEYS.active, 'false');
     localStorage.removeItem(KEYS.validUntil);
     localStorage.removeItem(KEYS.secretDelivered);
-
-    const userId = this.getCurrentUserId();
-    if (userId) {
-      const subs = this.getServerSubscriptions();
-      if (subs[userId]) {
-        subs[userId].active = false;
-        this.setServerSubscriptions(subs);
-      }
-    }
   }
 
   getUserSalt(): Uint8Array | null {
@@ -129,68 +93,5 @@ export class MockSubscriptionDataSource implements ISubscriptionDataSource {
     localStorage.removeItem(KEYS.active);
     localStorage.removeItem(KEYS.validUntil);
     localStorage.removeItem(KEYS.secretDelivered);
-  }
-
-  restoreLocalSubscription(validUntil: string): void {
-    localStorage.setItem(KEYS.active, 'true');
-    localStorage.setItem(KEYS.validUntil, validUntil);
-    localStorage.setItem(KEYS.secretDelivered, 'true');
-  }
-
-  clearSubscriptionData(): void {
-    localStorage.removeItem(KEYS.active);
-    localStorage.removeItem(KEYS.validUntil);
-    localStorage.removeItem(KEYS.secretDelivered);
-    localStorage.removeItem(KEYS.userSalt);
-  }
-
-  async validateSubscription(userId: string): Promise<SubscriptionValidation> {
-    const subs = this.getServerSubscriptions();
-    const entry = subs[userId];
-
-    if (!entry) {
-      return { valid: false, validUntil: null, reason: 'not_found' };
-    }
-
-    const now = new Date();
-    const expiration = new Date(entry.validUntil);
-
-    if (!entry.active || expiration < now) {
-      return { valid: false, validUntil: entry.validUntil, reason: 'expired' };
-    }
-
-    return { valid: true, validUntil: entry.validUntil, reason: 'active' };
-  }
-
-  private getCurrentUserId(): string | null {
-    const raw = localStorage.getItem(KEYS.session);
-    if (!raw) return null;
-    try {
-      const s = JSON.parse(raw) as Session;
-      return s.user.id;
-    } catch {
-      return null;
-    }
-  }
-
-  invalidateServerSubscription(userId: string): void {
-    const subs = this.getServerSubscriptions();
-    if (subs[userId]) {
-      subs[userId].active = false;
-      this.setServerSubscriptions(subs);
-    }
-  }
-
-  restoreServerSubscription(userId: string): void {
-    const validUntil = new Date();
-    validUntil.setDate(validUntil.getDate() + 30);
-    const subs = this.getServerSubscriptions();
-    subs[userId] = { validUntil: validUntil.toISOString(), active: true };
-    this.setServerSubscriptions(subs);
-  }
-
-  getServerSubscriptionStatus(userId: string): ServerSubscriptionEntry | null {
-    const subs = this.getServerSubscriptions();
-    return subs[userId] ?? null;
   }
 }

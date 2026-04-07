@@ -1,0 +1,127 @@
+flowchart TB
+    subgraph Auth["Autenticacao"]
+        LOGIN["/login"]
+        LOGIN -->|"handle + password (mock)"| AUTH_DS["authDataSource.login()"]
+        AUTH_DS -->|"Session"| LS_SESSION["localStorage\naes-feed-session"]
+        LOGOUT["logout()"] -->|"remove"| LS_SESSION
+        GET_SESSION["getSession()"] -->|"read + check expiry"| LS_SESSION
+    end
+
+    subgraph Subscribe["Ativacao de Assinatura"]
+        SUB_PAGE["/subscribe"]
+        SUB_PAGE -->|"pagamento XMR confirmado"| PAYMENT_SECRET["server envia\nPaymentSecret (unica vez)"]
+        PAYMENT_SECRET --> LOAD_SALT["loadOrCreateUserSalt()\nIndexedDB"]
+        LOAD_SALT --> DERIVE_MK["deriveMasterKey()\nHKDF(paymentSecret, userSalt)\nSHA-256, info='masterkey'\n-> CryptoKey HKDF 256"]
+        DERIVE_MK --> SAVE_MK["saveMasterKey()\nIndexedDB (structured clone)\nextractable: false"]
+        SAVE_MK --> DISCARD["paymentSecret = null\n(descartado da memoria)"]
+        DISCARD --> REDIRECT_FEED["redireciona -> /"]
+    end
+
+    subgraph Feed["Feed Principal"]
+        HOME["/ (home)"]
+        HOME -->|"filter: all/encrypted/free"| LIST_POSTS["postsDataSource.listPosts()"]
+        LIST_POSTS -->|"Post[]"| IDB_POSTS[("IndexedDB\naes-feed-data\nposts store")]
+        LIST_POSTS --> FEED_TABLE["FeedTable + PostRow"]
+        FEED_TABLE -->|"click post"| POST_VIEW
+    end
+
+    subgraph Write["Criacao de Post"]
+        WRITE["/write"]
+        WRITE -->|"check session"| GET_SESSION
+        WRITE -->|"FREE post"| CREATE_FREE["postsDataSource.createPost()\nbody = plaintext"]
+        WRITE -->|"PREMIUM post"| ENCRYPT_FLOW
+
+        subgraph ENCRYPT_FLOW["Fluxo de Criptografia (Escrita)"]
+            direction TB
+            LOAD_MK_W["loadMasterKey()\nIndexedDB aes-feed-keys"]
+            GEN_SALT["generatePostSalt()\n16 bytes random"]
+            GEN_ID["generatePostID()\ncrypto.randomUUID()"]
+            DERIVE_PK_W["derivePostKey()\nHKDF(masterKey, postID, postSalt)\nSHA-256 -> AES-GCM 256"]
+            ENC["encryptPost()\nAES-GCM(postKey, IV[12], plaintext)\n-> blob (base64) + iv (base64)"]
+            LOAD_MK_W --> DERIVE_PK_W
+            GEN_SALT --> DERIVE_PK_W
+            GEN_ID --> DERIVE_PK_W
+            DERIVE_PK_W --> ENC
+        end
+
+        ENC -->|"encryptedBlob + postSalt + iv"| CREATE_ENC["postsDataSource.createPost()\nbody = null"]
+        CREATE_FREE --> IDB_POSTS
+        CREATE_ENC --> IDB_POSTS
+        CREATE_FREE --> CREATED["/post/slug/created"]
+        CREATE_ENC --> CREATED
+        CREATED -->|"share link"| POST_VIEW
+    end
+
+    subgraph PostView["Visualizacao de Post"]
+        POST_VIEW["/post/slug"]
+        POST_VIEW -->|"getPostBySlug()"| IDB_POSTS
+        POST_VIEW -->|"FREE"| RENDER_BODY["PostBody\nmarkdown render"]
+        POST_VIEW -->|"PREMIUM"| DECRYPT_FLOW
+
+        subgraph DECRYPT_FLOW["Fluxo de Descriptografia (Leitura)"]
+            direction TB
+            LOAD_MK_R["loadMasterKey()\nIndexedDB aes-feed-keys"]
+            CHECK_MK{masterKey\nexiste?}
+            LOAD_MK_R --> CHECK_MK
+            CHECK_MK -->|"nao"| GATE_NOKEY["Gate: Assinar\nredireciona /subscribe"]
+            CHECK_MK -->|"sim"| CHECK_SUB["checkSubscription()\nlocalStorage"]
+            CHECK_SUB --> CHECK_SUB_V{assinatura\nvalida?}
+            CHECK_SUB_V -->|"nao"| GATE_EXPIRED["Gate: Assinatura expirada"]
+            CHECK_SUB_V -->|"sim"| DERIVE_PK_R["derivePostKey()\nHKDF(masterKey, post.id, postSalt)"]
+            DERIVE_PK_R --> DEC["decryptPost(postKey, blob, iv)\nAES-GCM decrypt"]
+            DEC -->|"sucesso"| RENDER_DEC["[+] decifrado\nPostBody"]
+            DEC -->|"erro"| GATE_ERROR["Gate: Chave invalida\nsua assinatura pode ter expirado"]
+        end
+    end
+
+    subgraph KeyHierarchy["Hierarquia de Chaves"]
+        direction TB
+        PS["PaymentSecret\n(servidor -> frontend, unica vez)"]
+        US["userSalt\n(gerado localmente, IndexedDB)"]
+        MK["MasterKey = HKDF(PS + userSalt)\n(IndexedDB, non-extractable)"]
+        PK["PostKey = HKDF(MK + postID + postSalt)\n(derivado em memoria, descartado)"]
+        AESGCM["AES-GCM encrypt/decrypt\n(PostKey + IV + content)"]
+        PS --> MK
+        US --> MK
+        MK --> PK
+        PK --> AESGCM
+    end
+
+    subgraph DevTools["DevModal (dev only)"]
+        DEV_MODAL["DevModal"]
+        DEV_MODAL -->|"Simular PaymentSecret"| SIM_PS["gera mock PaymentSecret\n-> deriveMasterKey\n-> saveMasterKey"]
+        DEV_MODAL -->|"Limpar crypto"| CLEAR["clearCryptoData()\nremove MasterKey + userSalt"]
+        SIM_PS --> IDB_KEYS[("IndexedDB\naes-feed-keys\ncrypto store")]
+        CLEAR --> IDB_KEYS
+        DEV_MODAL -->|"Simular sub valida"| LS_SUB["localStorage\naes-feed-subscription"]
+        DEV_MODAL -->|"Simular sub expirada"| LS_SUB
+    end
+
+    subgraph FeedActions["Feed Social"]
+        UPVOTE["feedDataSource.upvote()"] --> IDB_POSTS
+        UPVOTE --> LS_UPVOTES["localStorage\naes-feed-upvotes"]
+        COMMENTS["feedDataSource.addComment()"] --> IDB_COMMENTS[("IndexedDB\naes-feed-data\ncomments store")]
+    end
+
+    subgraph NeverLeaks["NUNCA sai do browser"]
+        direction LR
+        N1["PaymentSecret (descartado apos uso)"]
+        N2["MasterKey (non-extractable)"]
+        N3["PostKey (em memoria apenas)"]
+        N4["Conteudo em claro"]
+    end
+
+    %% Styling
+    classDef route fill:#1a1a1a,stroke:#cc0000,color:#ccc
+    classDef store fill:#1a1a1a,stroke:#4a9eff,color:#ccc
+    classDef crypto fill:#1a1a1a,stroke:#4a9e4a,color:#ccc
+    classDef gate fill:#1a1a1a,stroke:#880000,color:#cc0000
+    classDef dev fill:#1a1a1a,stroke:#666,color:#999
+    classDef never fill:#1a1a1a,stroke:#cc0000,color:#cc0000
+
+    class LOGIN,HOME,WRITE,POST_VIEW,CREATED,SUB_PAGE route
+    class IDB_POSTS,IDB_COMMENTS,IDB_KEYS,LS_SESSION,LS_SUB,LS_UPVOTES store
+    class LOAD_MK_W,GEN_SALT,GEN_ID,DERIVE_PK_W,ENC,LOAD_MK_R,DERIVE_PK_R,DEC,DERIVE_MK,LOAD_SALT,SAVE_MK crypto
+    class GATE_NOKEY,GATE_EXPIRED,GATE_ERROR gate
+    class DEV_MODAL,SIM_PS,CLEAR dev
+    class N1,N2,N3,N4 never

@@ -1,231 +1,196 @@
-# CLAUDE.md — AES F33D Frontend
+## Project Configuration
 
-Este arquivo é a especificação mandatória do projeto. Leia antes de escrever qualquer código.
-Violação de qualquer regra aqui é um bug.
+- **Language**: TypeScript
+- **Package Manager**: npm
+- **Add-ons**: none
 
-## PROJETO
+---
 
-AES F33D — blog dual com conteúdo premium cifrado end-to-end.
-O servidor NUNCA vê conteúdo decifrado, MasterKey, PostKey ou PaymentSecret em claro.
+# CLAUDE.md — AES F33D
 
-## STACK
+Regras de arquitetura e estilo que se aplicam a **todo** código gerado neste projeto.
+Leia este arquivo antes de qualquer tarefa. Não há exceções.
 
-- SvelteKit + TypeScript (strict, sem `any`)
-- Web Crypto API (crypto.subtle) — ÚNICA fonte de crypto
-- IndexedDB — armazenamento de chaves criptográficas
-- localStorage — estado de subscription e preferências
+---
 
-## HIERARQUIA DE CHAVES
+## Identidade do projeto
 
+**AES F33D** é um feed anônimo de posts criptografados. Autores publicam conteúdo cifrado com AES-GCM. Leitores pagam em XMR e recebem um `payment_secret` — a única chave que decifra o conteúdo. Nenhuma conta, nenhum login, nenhum histórico. O acesso é a chave.
+
+---
+
+## Estética visual — referência: 0day.today
+
+A UI segue o estilo de agregadores hacker/underground como 0day.today: denso, utilitário, sem decoração. Não é cyberpunk com néon — é terminal com propósito.
+
+### Paleta
 ```
-PaymentSecret (32 bytes, gerado pelo SERVIDOR)
-    ↓ HKDF-SHA256, salt=userSalt, info="aesf33d-masterkey-v1"
-MasterKey (AES-GCM 256, extractable: true)
-    ↓ HKDF-SHA256, salt=postSalt, info="aesf33d-postkey-v1:" + postId
-PostKey (AES-GCM 256, extractable: false)
-    ↓ AES-GCM encrypt, iv=12 bytes random
-encrypted_blob
-```
-
-Cada nível é derivado do anterior. Nenhum nível sobe para o servidor.
-
-## PROIBIÇÕES ABSOLUTAS
-
-### Crypto
-- NÃO usar libs externas de crypto (forge, tweetnacl, sjcl, etc)
-- NÃO enviar MasterKey, PostKey ou PaymentSecret para qualquer endpoint
-- NÃO armazenar PaymentSecret após derivar MasterKey — descartar da memória
-- NÃO usar localStorage para chaves criptográficas — só IndexedDB
-- NÃO criar fallback que dê acesso sem chave válida
-- NÃO fazer o frontend gerar PaymentSecret em produção (mock é exceção isolada)
-- NÃO usar `extractable: true` em PostKey (só MasterKey precisa ser exportável)
-
-### Código
-- NÃO usar `any` — tipar tudo
-- NÃO usar `as` para forçar tipos — resolver no nível correto
-- NÃO usar `console.log` em produção — resultado vai para UI em dev
-- NÃO criar abstrações prematuras — resolver o problema direto
-- NÃO usar comentários óbvios (`// incrementa contador`) — código deve ser autoexplicativo
-- NÃO instalar dependências sem autorização explícita
-- NÃO criar arquivos fora da estrutura definida
-
-### Arquitetura
-- NÃO criar rotas além das definidas
-- NÃO acessar storage diretamente de componentes — sempre via DataSource ou crypto layer
-- NÃO misturar lógica de mock com lógica de produção no mesmo arquivo
-
-## REGRAS DE DERIVAÇÃO
-
-### MasterKey
-```
-ikm:  PaymentSecret (raw bytes)
-salt: userSalt (16 bytes, gerado no cadastro, público)
-info: "aesf33d-masterkey-v1" (UTF-8 encoded)
-algo: HKDF-SHA256
-out:  AES-GCM 256, extractable: true, usages: ['encrypt', 'decrypt']
+--bg:          #0f0f0f   /* fundo base — quase preto */
+--bg-surface:  #1a1a1a   /* cards, painéis */
+--bg-hover:    #222222   /* hover de linhas */
+--border:      #2a2a2a   /* divisores */
+--text:        #cccccc   /* corpo de texto */
+--text-muted:  #666666   /* metadata, labels */
+--accent:      #cc0000   /* vermelho — ações primárias, badges */
+--accent-dim:  #880000   /* hover do accent */
+--link:        #4a9eff   /* links inline */
+--link-hover:  #7ab8ff
+--success:     #4a9e4a   /* decryptado com sucesso */
+--mono:        'Courier New', Courier, monospace
+--sans:        'Verdana', Geneva, sans-serif
 ```
 
-### PostKey
+### Tom visual
+- Layout tabular: posts são linhas de uma tabela, não cards com sombra
+- Tipografia pequena e densa: 12–13px para metadata, 14px para títulos
+- Sem bordas arredondadas — `border-radius: 0` em tudo
+- Sem sombras, sem gradientes, sem blur decorativo
+- Separadores são `1px solid var(--border)` — nada mais
+- Hover em linhas: só muda `background-color` para `--bg-hover`
+- Badges são retângulos com `background: var(--accent)`, texto branco 11px uppercase
+- Links não têm underline por padrão — só no hover
+
+### Estrutura de página (inspirada no 0day.today)
 ```
-ikm:  MasterKey (exportar para raw bytes via exportKey('raw') → reimportar como HKDF)
-salt: postSalt (16 bytes random por post)
-info: "aesf33d-postkey-v1:" + postId (UTF-8 encoded)
-algo: HKDF-SHA256
-out:  AES-GCM 256, extractable: false, usages: ['encrypt', 'decrypt']
-```
-
-Web Crypto não permite usar AES-GCM key como input de HKDF. O workaround é:
-exportKey('raw', masterKey) → importKey('raw', bytes, 'HKDF', false, ['deriveKey'])
-
-### Encrypt/Decrypt
-```
-algo: AES-GCM
-iv:   12 bytes random (gerado por operação, armazenado junto com blob)
-```
-
-## IndexedDB
-
-Database: `aesf33d-crypto`, version: 1
-
-| Store      | keyPath  | Conteúdo                                    |
-|------------|----------|---------------------------------------------|
-| `keys`     | `id`     | `{ id: "masterKey", value: ArrayBuffer }`   |
-| `keys`     | `id`     | `{ id: "userSalt", value: ArrayBuffer }`    |
-| `postKeys` | `postId` | `{ postId, postSalt, key: ArrayBuffer }`    |
-
-PostKeys são cacheadas como (postId, postSalt) e re-derivadas via MasterKey quando necessário.
-Isso evita armazenar raw key material de PostKeys em repouso.
-
-## ESTRUTURA DE ARQUIVOS
-
-```
-src/
-├── app.css                  ← CSS global (variáveis, reset, elementos)
-├── lib/
-│   ├── crypto/
-│   │   ├── crypto.ts        ← derivação, encrypt, decrypt
-│   │   ├── store.ts         ← IndexedDB operations
-│   │   ├── backup.ts        ← export/import CryptoBackup (.aesf33d)
-│   │   └── utils.ts         ← base64 ↔ ArrayBuffer, encoding helpers
-│   │
-│   ├── datasources/
-│   │   ├── errors.ts        ← AuthError
-│   │   ├── interfaces/
-│   │   │   ├── IAuthDataSource.ts         ← User, Session, IAuthDataSource
-│   │   │   └── ISubscriptionDataSource.ts ← SubscriptionStatus, ISubscriptionDataSource
-│   │   └── mock/
-│   │       ├── MockSubscriptionDataSource.ts ← implements ISubscriptionDataSource
-│   │       ├── MockAuthDataSource.ts         ← login/registro via localStorage
-│   │       └── MockPostDataSource.ts         ← store reativo de posts mock
-│   │
-│   ├── stores/
-│   │   ├── auth.ts          ← Svelte stores de sessão (session, isLoggedIn, currentUser)
-│   │   └── subscription.ts  ← Store de assinatura (subscriptionStatus, activate, enforce)
-│   │
-│   └── components/
-│       ├── DevModal.svelte  ← Painel dev (toggle: tecla D)
-│       ├── FeedRow.svelte   ← Linha individual do feed
-│       └── PostContent.svelte ← Renderização de conteúdo (free/premium/locked)
-│
-└── routes/
-    ├── +layout.svelte       ← Header, footer, slot, DevModal, auth init
-    ├── /                    ← feed (HN-style)
-    ├── /post/[id]           ← leitura de post
-    ├── /write               ← editor (requer login)
-    ├── /subscribe           ← pagamento + export/import (requer login)
-    ├── /login               ← página de login
-    ├── /register            ← página de registro
-    └── /test                ← validação funcional (DEV only)
-
-docs/
-├── impl-001-visual-design.md      ← Spec do layout e design visual
-├── impl-002-auth-system.md        ← Spec do sistema de login/registro
-└── impl-003-subscription-flow.md  ← Spec do fluxo de assinatura mock
+┌─────────────────────────────────────────────┐
+│ [AES F33D]              [about] [submit]     │  ← header fixo, compacto
+├──────┬──────────────────────────────────────┤
+│ nav  │  #   title              author  date  │  ← tabela de posts
+│ cats │  1   [ENC] Post title   anon    02/03 │
+│      │  2   [FREE] Post title  anon    02/03 │
+│      │  ...                                  │
+└──────┴──────────────────────────────────────┘
 ```
 
-Não criar arquivos fora desta estrutura sem autorização.
+### Componentes visuais
+- `[ENC]` — badge vermelho: post premium criptografado
+- `[FREE]` — badge cinza escuro: post público
+- `[NEW]` — badge accent em posts < 24h
+- Formulário de decrypt: borda `1px solid #cc0000`, sem padding excessivo, label acima do input
+- Mensagem de erro: texto `--accent`, prefixado com `[-]`
+- Mensagem de sucesso: texto `--success`, prefixado com `[+]`
+- Loading states: texto piscando com CSS animation, sem spinners
 
-## FLUXO DE ASSINATURA (MOCK)
+---
 
-1. `simulatePayment()` → gera PaymentSecret (32 bytes) + userSalt (16 bytes)
-2. `deriveMasterKey(paymentSecret, userSalt)` → CryptoKey
-3. `saveMasterKey(key)` → IndexedDB
-4. `saveUserSalt(salt)` → IndexedDB
-5. PaymentSecret descartado (sai do escopo, sem referência)
-6. Subscription salva em localStorage: `{ active: true, validUntil: ISO8601 }`
+## Arquitetura em camadas
 
-## FLUXO DE EXPIRAÇÃO
+O projeto segue separação estrita de responsabilidades. Cada camada só conhece a camada imediatamente abaixo dela.
 
-1. Detecta `active === false` OU `validUntil < now`
-2. `clearCryptoData()` — wipe total do IndexedDB
-3. Redirect → `/subscribe`
-4. Sem acesso parcial, sem cache de conteúdo decifrado
+```
+UI (routes / pages)
+  └── Components (lib/components)
+        └── Services (lib/services)
+              └── Core (lib/crypto, lib/api, lib/db)
+                    └── Types (lib/types)
+```
 
-## EXPORT/IMPORT (.aesf33d)
+### Camada: Core
+Lógica pura, sem efeitos colaterais de UI. Funções testáveis isoladamente.
+- `lib/crypto.ts` — encrypt/decrypt, key derivation
+- `lib/api.ts` — fetch wrapper tipado, tratamento de erros HTTP
+- `lib/db.ts` — queries (backend) ou acesso a storage (frontend)
+
+### Camada: Services
+Orquestram o Core para casos de uso reais. Não importam nada de Svelte/UI.
+- `lib/services/post.ts` — buscar posts, descriptografar conteúdo
+- `lib/services/auth.ts` — login, sessão, token
+- `lib/services/subscription.ts` — validar assinatura, checar acesso premium
+
+### Camada: Components
+Componentes Svelte reutilizáveis, sem lógica de negócio.
+- Recebem dados via props, emitem eventos — nunca chamam services diretamente
+- Não fazem fetch, não conhecem a API
+- `lib/components/ui/` — primitivos: Button, Input, Badge, Card
+- `lib/components/post/` — PostCard, PostBody, PremiumGate, DecryptForm
+- `lib/components/layout/` — Nav, Footer, PageShell
+
+### Camada: UI (routes)
+- `+page.svelte` e `+page.server.ts` são finos — só conectam services com components
+- Máximo 50 linhas por arquivo de rota
+- Lógica de busca vai em `+page.server.ts`, nunca inline no `+page.svelte`
+
+---
+
+## Componentes reutilizáveis
+
+Todo componente deve ser **genérico o suficiente para ser usado em dois contextos diferentes**.
+Se não conseguir imaginar dois contextos, ele é específico demais — extraia a lógica e deixe o componente como wrapper fino.
+
+```svelte
+<!-- ❌ Errado: componente acoplado ao contexto -->
+<PremiumPostDecryptForm postId={post.id} authorWallet={post.author.wallet} />
+
+<!-- ✅ Certo: componente que recebe o que precisa -->
+<DecryptForm
+  onSuccess={(plaintext) => content = plaintext}
+  onError={(e) => error = e.message}
+/>
+```
+
+Props obrigatórias devem ter tipos explícitos. Sem `any`. Sem props opcionais desnecessárias.
+
+---
+
+## Sem boilerplate
+
+Proibido gerar código que existe só para "completar a estrutura".
+
+| Proibido | Alternativa |
+|---|---|
+| Comentários óbvios `// increment counter` | Sem comentário — o código é auto-explicativo |
+| `index.ts` re-exportando tudo | Importação direta do arquivo |
+| Interfaces com um único implementador | Type alias simples |
+| Try/catch vazio ou com `console.log(e)` | Erros tipados, propagados ou tratados |
+| Funções `handleXxx` de uma linha que só chamam outra função | Passar a função diretamente |
+| Stores Svelte para estado que é local | `$state` / `let` local no componente |
+| Arquivos `constants.ts` com strings mágicas que não se repetem | Inline onde é usado |
+
+Se um bloco de código não faz nada que seu caller não pudesse fazer diretamente, delete-o.
+
+---
+
+## Convenções
+
+### Nomes
+- Arquivos: `kebab-case.ts`
+- Componentes Svelte: `PascalCase.svelte`
+- Funções: `camelCase` — verbos (`getPost`, `encryptContent`, `validateSecret`)
+- Types/Interfaces: `PascalCase` — substantivos (`Post`, `CryptoError`, `SubscriptionStatus`)
+- Constantes de módulo: `SCREAMING_SNAKE_CASE`
+
+### Erros
+Erros são tipos, não strings soltas.
 
 ```typescript
-interface CryptoBackup {
-  version: 1;
-  exportedAt: string;       // ISO 8601
-  userId: string;
-  masterKey: string;        // base64 of raw bytes
-  userSalt: string;         // base64
-  cachedPosts: Array<{
-    postId: string;
-    postSalt: string;       // base64
-  }>;
-}
+// lib/types.ts
+export type AppError =
+  | { kind: 'crypto';       message: string }
+  | { kind: 'unauthorized'; message: string }
+  | { kind: 'not_found';    resource: string }
+  | { kind: 'network';      status: number; message: string }
 ```
 
-- Export: `exportKey('raw', masterKey)` → base64 → JSON → download `.aesf33d`
-- Import: validar `version === 1` → `importKey('raw')` → salvar IndexedDB
-- 100% local — nenhum byte criptográfico trafega pelo servidor
-- Rollback se qualquer passo do import falhar
+Toda função que pode falhar retorna `Promise<Result<T, AppError>>` ou lança um `AppError` tipado — nunca `Error` genérico.
 
-## DECISÕES FIXAS — NÃO QUESTIONAR
+### Imports
+Ordem: tipos → core → services → components → utils
 
-- Assinatura à plataforma — um pagamento dá acesso a TODOS os posts premium
-- PaymentSecret gerado pelo SERVIDOR — nunca pelo autor, nunca pelo frontend
-- Preview de premium: somente título (sem conteúdo parcial)
-- MasterKey gerada e armazenada LOCALMENTE no browser
-- postId gerado pelo frontend como UUID antes do upload
-- userSalt é público — não é segredo, é domain separation para HKDF
-- Expiração = wipe total + redirect (sem acesso a conteúdo previamente decifrado)
-- Sem ACL, sem roles — a chave é a permissão
+```typescript
+import type { Post, AppError } from '$lib/types'
+import { decrypt } from '$lib/crypto'
+import { getPost } from '$lib/services/post'
+import PostBody from '$lib/components/post/PostBody.svelte'
+```
 
-## VISUAL (QUANDO FOR IMPLEMENTAR UI)
+---
 
-- Estética: densa, utilitária (referência: 0day.today)
-- border-radius: 0 em tudo
-- Sem sombras, sem gradientes
-- Accent: #cc0000 (vermelho) — único
-- Fonts: Courier New (código, headers), Verdana (corpo)
-- Feedback: prefixos `[+]` sucesso, `[-]` erro, `[*]` info
-- Background escuro (#111), texto claro (#ccc)
+## O que não fazer
 
-## ANTES DE CADA COMMIT
-
-Verificar mentalmente:
-1. Alguma chave criptográfica está sendo enviada ao servidor? → BUG
-2. PaymentSecret está sendo persistido em qualquer lugar? → BUG
-3. Existe fallback que dá acesso sem chave? → BUG
-4. Algum `any` ou `as` forçado? → CORRIGIR
-5. Algum arquivo fora da estrutura definida? → MOVER
-
-## DOCUMENTAÇÃO DE IMPLEMENTAÇÃO
-
-Após cada GRANDE solicitação (nova feature, novo sistema, refactor significativo), criar um documento em `docs/` seguindo o padrão:
-
-- Arquivo: `docs/impl-NNN-nome-curto.md` (NNN sequencial, ex: `impl-003-payments.md`)
-- Objetivo: permitir reimplementação do zero caso o projeto seja perdido
-- O documento deve conter:
-  1. **Resumo**: o que foi implementado e por quê
-  2. **Arquivos criados**: lista completa com caminho e propósito
-  3. **Arquivos modificados**: o que mudou em cada arquivo existente
-  4. **Interfaces e tipos**: todas as interfaces TypeScript criadas
-  5. **Lógica de negócio**: fluxos, validações, regras, estados
-  6. **Decisões de design**: escolhas não-óbvias e suas razões
-  7. **Integração**: como conecta com o código existente
-- Atualizar a seção ESTRUTURA DE ARQUIVOS neste CLAUDE.md com novos arquivos
-- NÃO documentar: código trivial, estilos CSS óbvios, implementações que o código explica sozinho
-- O documento é uma SPEC, não um tutorial — linguagem direta, sem floreios
+- **Não gere telas completas de uma vez.** Construa os componentes base primeiro, componha depois.
+- **Não duplique lógica** entre `+page.server.ts` e o componente. Se está nos dois, está errado.
+- **Não use `any`**, nem `as unknown as T`. Se precisar, o tipo está errado.
+- **Não crie abstrações antecipadas.** Abstraia quando houver repetição real, não por precaução.
+- **Não esqueça o contrato criptográfico:** `encrypted_blob` é sempre `base64(iv[12] + ciphertext)`, salt é gerado por post, secret nunca persiste.
+- **Não use frameworks CSS** (Tailwind, Bootstrap etc.) — CSS custom properties puras, conforme a paleta acima.
+- **Não use border-radius, sombras ou gradientes** — a estética é flat e utilitária.

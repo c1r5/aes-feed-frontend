@@ -1,34 +1,27 @@
 {
-  "name": "aes-feed-frontend",
-  "version": "1.0.0",
-  "type": "module",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "dev": "vite dev",
-    "build": "vite build",
-    "preview": "vite preview",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "tunnel": "npx localtunnel --port 5173",
-    "deploy": "",
-    "test": "vitest run",
-    "test:unit": "vitest run",
-    "test:integration": "PUBLIC_USE_MOCKS=false PUBLIC_API_URL=http://localhost:3089/api vitest run src/lib/datasources/api/__tests__/"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "packageManager": "pnpm@10.33.0",
-  "devDependencies": {
-    "@sveltejs/adapter-auto": "^7.0.1",
-    "@sveltejs/kit": "^2.55.0",
-    "@sveltejs/vite-plugin-svelte": "^7.0.0",
-    "@vitejs/plugin-basic-ssl": "^2.3.0",
-    "svelte": "^5.55.1",
-    "svelte-check": "^4.4.5",
-    "tslib": "^2.8.1",
-    "typescript": "^6.0.2",
-    "vite": "^8.0.3",
-    "vitest": "^2.0.0"
-  }
+	"name": "aes-feed-frontend",
+	"private": true,
+	"version": "0.0.1",
+	"type": "module",
+	"scripts": {
+		"dev": "vite dev",
+		"build": "vite build",
+		"preview": "vite preview",
+		"prepare": "svelte-kit sync || echo ''",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
+	},
+	"devDependencies": {
+		"@sveltejs/adapter-auto": "^7.0.0",
+		"@sveltejs/kit": "^2.50.2",
+		"@sveltejs/vite-plugin-svelte": "^6.2.4",
+		"@vitejs/plugin-basic-ssl": "^2.3.0",
+		"svelte": "^5.54.0",
+		"svelte-check": "^4.4.2",
+		"typescript": "^5.9.3",
+		"vite": "^7.3.1"
+	},
+	"dependencies": {
+		"marked": "^17.0.5"
+	}
 }
